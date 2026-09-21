@@ -1,0 +1,10 @@
+# Extras for running the notebooks and executing them to embed outputs.
+# Not needed to run the pipeline, the experiments, or the dashboard.
+-r requirements.txt
+
+# nbconvert + ipykernel are enough to open and execute the notebooks. The full
+# `jupyter` metapackage pulls in JupyterLab extensions whose deeply nested
+# asset paths fail to install on Windows without long-path support enabled.
+nbconvert>=7.10
+nbclient>=0.9
+ipykernel>=6.29

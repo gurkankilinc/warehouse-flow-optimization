@@ -1,0 +1,31 @@
+# Environments
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Generated data. The pipeline regenerates all of this in seconds; only the
+# small curated extracts in data/sample/ are tracked.
+data/raw/
+data/processed/
+!data/sample/
+
+# Result tables are committed: they are small, and they let someone reading the
+# repository check the numbers in the README without running a 40-minute
+# pipeline first. Anything larger stays out.
+reports/*
+!reports/.gitkeep
+!reports/*.csv
+
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/

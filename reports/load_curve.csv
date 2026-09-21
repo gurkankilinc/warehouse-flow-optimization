@@ -1,0 +1,9 @@
+,on_time_rate,on_time_rate,picker_utilisation,picker_utilisation
+scenario,baseline,optimized,baseline,optimized
+orders_per_day,,,,
+150,1.0,0.9994,0.6505,0.6446
+175,0.999,0.9987,0.7824,0.7769
+200,0.9809,0.9982,0.7965,0.7885
+225,0.6098,0.9859,0.9121,0.9165
+250,0.4872,0.9858,1.0032,1.0069
+275,0.0,0.9626,1.0153,1.0133

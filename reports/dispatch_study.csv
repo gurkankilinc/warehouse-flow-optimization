@@ -1,0 +1,11 @@
+variant,on_time_rate,missed_pct,p95_tardiness_h,orders_per_tour,missed_vs_edd_pct
+fifo,0.9061,9.3877,4.0817,4.8954,390.4
+edd (baseline),0.9809,1.9143,0.4171,4.3557,0.0
+least_slack,0.9696,3.0372,1.1285,4.853,58.7
+least_slack + ML pick time,0.9694,3.0556,1.1285,4.8005,59.6
+triage,0.9974,0.2577,0.1919,3.4785,-86.5
+triage + ML pick time,0.9974,0.2577,0.1919,3.5306,-86.5
+risk escalation (thr 0.20),0.9931,0.6872,0.274,3.4874,-64.1
+risk escalation (thr 0.35),0.9929,0.7117,0.246,3.5031,-62.8
+risk escalation (thr 0.50),0.9928,0.724,0.246,3.5159,-62.2
+risk escalation (thr 0.80),0.9959,0.4111,0.22,3.5185,-78.5

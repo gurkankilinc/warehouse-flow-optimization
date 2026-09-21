@@ -1,0 +1,5 @@
+condition,baseline,optimized,delta,ci95_low,ci95_high,holds_up
+normal,0.929979,0.99438,0.064401,0.003738,0.125063,True
+demand_surge,0.001222,0.964155,0.962933,0.95241,0.973456,True
+truck_delay_heavy,0.935182,0.994723,0.059541,0.002795,0.116287,True
+picker_shortage,0.022481,0.958523,0.936041,0.898836,0.973247,True
