@@ -375,7 +375,10 @@ class SimulationConfig:
 
 @dataclass(frozen=True)
 class ModelConfig:
-    # Walk-forward backtest for the demand model.
+    # Walk-forward backtest for the demand model. Each fold scores a block of
+    # this many days, but with lags of realised demand, so the backtest is
+    # one-day-ahead accuracy, not a 7-day-ahead forecast. Also the length of the
+    # early-stopping validation tail.
     forecast_horizon_days: int = 7
     n_backtest_folds: int = 4
     min_train_days: int = 180

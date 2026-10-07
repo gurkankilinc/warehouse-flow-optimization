@@ -246,8 +246,11 @@ def urgency_slotting(
 ) -> pd.DataFrame:
     """Optimised: forecast pick frequency, weighted by urgency exposure.
 
-    ``forecast_visits`` comes from the demand model, not from history, so the
-    slot layout is aimed at the week ahead rather than the weeks behind.
+    ``forecast_visits`` comes from the demand model rather than from a plain
+    trailing total, so the slot layout is aimed at the period the slots will
+    serve rather than the weeks behind. It is built from the same information
+    the ABC baseline has -- demand before the cut-off -- so the two rules
+    differ in how they use the past, not in what they are allowed to see.
     ``urgency_share`` is the fraction of a SKU's picks that sit in same-day
     orders.
     """

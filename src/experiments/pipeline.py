@@ -7,7 +7,9 @@ their own slightly different version.
 The order of operations enforces the no-leakage rule:
 
 1. Demand features are built over the whole history.
-2. The demand model is trained strictly before the simulation window starts.
+2. The demand model is trained strictly before the simulation window starts,
+   and the forecast that drives slotting is built from that same history
+   only -- its demand features are frozen at the cut-off.
 3. A baseline simulation runs over the window, logging tour timings and
    risk snapshots.
 4. The pick-time and SLA models are fitted on the *training* phase of that run
@@ -25,7 +27,7 @@ import pandas as pd
 
 from config import CONFIG, PROCESSED_DIR
 from src.calibration.fit_parameters import load_calibration
-from src.features.build import build_demand_features
+from src.features.build import build_demand_features, build_horizon_features
 from src.models.demand_forecast import DemandForecaster, train_final_model
 from src.models.pick_time import PickTimeModel, evaluate_pick_time
 from src.models.sla_risk import SLARiskModel, build_training_set, evaluate_sla_risk
@@ -37,6 +39,7 @@ __all__ = [
     "Context",
     "build_context",
     "build_policies",
+    "forecast_visits",
     "run_scenario",
     "load_or_build_context",
     "SCENARIOS",
@@ -44,7 +47,10 @@ __all__ = [
 
 #: Preparing a context trains three models and runs a full simulation, so it is
 #: cached for consumers -- notably the dashboard -- that only want to read it.
-CONTEXT_CACHE = PROCESSED_DIR / "context.joblib"
+#: The name is versioned: bump it whenever the way a context is built changes,
+#: so no consumer silently keeps reading artefacts from the old code. v2: the
+#: slotting forecast no longer sees demand from inside the simulation window.
+CONTEXT_CACHE = PROCESSED_DIR / "context_v2.joblib"
 
 
 SCENARIOS: dict[str, dict[str, str]] = {
@@ -103,13 +109,23 @@ def _make_streams(seed: int, n_pickers: int | None = None) -> StochasticStreams:
     )
 
 
-def _forecast_visits(
-    context_features: pd.DataFrame,
+def forecast_visits(
+    daily_demand: pd.DataFrame,
+    catalog: pd.DataFrame,
     model: DemandForecaster,
     cutoff_date: pd.Timestamp,
     horizon_days: int,
+    units_per_line: float,
 ) -> pd.Series:
     """Expected pick visits per SKU over the period the slots must serve.
+
+    Built only from demand before ``cutoff_date``: the history features are
+    frozen at the cut-off (see ``build_horizon_features``), so the forecast
+    knows exactly what the ABC baseline knows -- the past -- and the
+    comparison between the two slotting rules is a comparison of how they use
+    it. Earlier versions read the horizon rows out of the full-history feature
+    frame, whose lags carry the realised demand of the very period being
+    slotted for.
 
     The model predicts units; slotting cares about *visits*, since a picker
     walks to a slot once whether the line is for one unit or fifty. Dividing by
@@ -117,17 +133,10 @@ def _forecast_visits(
     factor and so does not change the ranking, but it keeps the score in the
     unit the objective is written in.
     """
-    calibration = load_calibration()
-    horizon = context_features[
-        (context_features["date"] >= cutoff_date)
-        & (context_features["date"] < cutoff_date + pd.Timedelta(days=horizon_days))
-    ]
-    if horizon.empty:
-        raise ValueError("no rows in the forecast horizon")
-
+    horizon = build_horizon_features(daily_demand, catalog, cutoff_date, horizon_days)
     predictions = model.predict(horizon)
     units = pd.Series(predictions, index=horizon["sku_id"].to_numpy()).groupby(level=0).sum()
-    return units / max(calibration.units_per_line_mean, 1e-9)
+    return units / max(units_per_line, 1e-9)
 
 
 def _urgency_share(
@@ -201,12 +210,19 @@ def build_context(*, verbose: bool = True) -> Context:
 
     if verbose:
         print("[5/5] computing forecast-driven slot assignment")
-    forecast_visits = _forecast_visits(features, demand_model, cutoff_date, sim.window_days)
+    visits = forecast_visits(
+        tables["daily_demand"],
+        tables["sku_catalog"],
+        demand_model,
+        cutoff_date,
+        sim.window_days,
+        load_calibration().units_per_line_mean,
+    )
     urgency_share = _urgency_share(
         tables["orders"], tables["order_lines"], origin_h, sim.training_end_s
     )
     urgency_assignment = urgency_slotting(
-        tables["sku_catalog"], tables["warehouse_slots"], forecast_visits, urgency_share
+        tables["sku_catalog"], tables["warehouse_slots"], visits, urgency_share
     )
 
     return Context(
@@ -220,7 +236,7 @@ def build_context(*, verbose: bool = True) -> Context:
         risk_model=risk_model,
         pick_time_report=pick_time_report,
         risk_report=risk_report,
-        forecast_visits=forecast_visits,
+        forecast_visits=visits,
         urgency_share=urgency_share,
         abc_assignment=abc_assignment,
         urgency_assignment=urgency_assignment,

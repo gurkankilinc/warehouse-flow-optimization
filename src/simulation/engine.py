@@ -622,7 +622,7 @@ def run_simulation(
     )
     result = _collect_results(
         all_orders, tour_records, truck_records, putaway_records, snapshots,
-        sim_cfg, picking_cfg,
+        sim_cfg, picking_cfg, truck_cfg,
     )
     result.trace = pd.DataFrame(trace_records)
     return result
@@ -778,6 +778,7 @@ def _collect_results(
     risk_snapshots: pd.DataFrame,
     sim_cfg: SimulationConfig,
     picking_cfg: PickingConfig,
+    truck_cfg: TruckConfig,
 ) -> SimulationResult:
     orders_df = pd.DataFrame(
         [
@@ -844,7 +845,9 @@ def _collect_results(
     trucks_df = pd.DataFrame(truck_records)
     putaway_df = pd.DataFrame(putaway_records)
 
-    kpis = _compute_kpis(orders_df, tours_df, trucks_df, putaway_df, sim_cfg, picking_cfg)
+    kpis = _compute_kpis(
+        orders_df, tours_df, trucks_df, putaway_df, sim_cfg, picking_cfg, truck_cfg
+    )
     return SimulationResult(
         orders_df, tours_df, trucks_df, putaway_df, kpis, risk_snapshots
     )
@@ -857,6 +860,7 @@ def _compute_kpis(
     putaway_df: pd.DataFrame,
     sim_cfg: SimulationConfig,
     picking_cfg: PickingConfig,
+    truck_cfg: TruckConfig,
 ) -> dict:
     m = orders_df[orders_df["in_measurement_window"]]
     warmup_s = sim_cfg.measure_start_s
@@ -934,7 +938,7 @@ def _compute_kpis(
                 sim_cfg.evaluation_days
                 * (sim_cfg.shift_end_hour - sim_cfg.shift_start_hour)
                 * 3600.0
-                * CONFIG.truck.n_load_teams
+                * truck_cfg.n_load_teams
             )
             kpis["loader_utilisation"] = loader_seconds / max(available, 1.0)
 

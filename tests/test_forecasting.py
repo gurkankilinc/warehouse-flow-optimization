@@ -13,7 +13,12 @@ import pandas as pd
 import pytest
 
 from config import CONFIG
-from src.features.build import TARGET, build_demand_features, feature_columns
+from src.features.build import (
+    TARGET,
+    build_demand_features,
+    build_horizon_features,
+    feature_columns,
+)
 
 
 @pytest.fixture
@@ -109,6 +114,102 @@ def test_true_popularity_is_not_among_the_features(toy_data):
     columns = set(feature_columns(features))
     assert "popularity" not in columns
     assert "express_propensity" not in columns
+
+
+# ----------------------------------------------------------------------
+# The slotting forecast: a multi-week horizon decided at one cut-off
+# ----------------------------------------------------------------------
+
+CUTOFF_ROW = 80
+HORIZON_DAYS = 25  # runs well into the dates the toy data still has demand for
+
+
+class _SumOfFeatures:
+    """Stand-in forecaster whose output moves with every feature it is given,
+    so any leak into the features shows up in the forecast."""
+
+    def __init__(self, features: list[str]):
+        self.features = features
+
+    def predict(self, frame: pd.DataFrame) -> np.ndarray:
+        return frame[self.features].fillna(0.0).sum(axis=1).to_numpy()
+
+
+def _tamper(daily: pd.DataFrame, mask: pd.Series) -> pd.DataFrame:
+    tampered = daily.copy()
+    tampered.loc[mask, "demand"] = 9999
+    return tampered
+
+
+def test_horizon_features_ignore_demand_on_and_after_the_cutoff(toy_data):
+    """The leak this pins down: reading the horizon rows out of the
+    full-history frame gives day ``cutoff + k`` the realised demand of day
+    ``cutoff + k - 1``. A slot decision taken at the cut-off cannot know that."""
+    daily, catalog = toy_data
+    cutoff = daily["date"].iloc[CUTOFF_ROW]
+
+    base = build_horizon_features(daily, catalog, cutoff, HORIZON_DAYS)
+    after = build_horizon_features(
+        _tamper(daily, daily["date"] >= cutoff), catalog, cutoff, HORIZON_DAYS
+    )
+
+    pd.testing.assert_frame_equal(base, after)
+
+
+def test_slotting_forecast_ignores_demand_on_and_after_the_cutoff(toy_data):
+    """The same guarantee, checked on what slotting actually consumes."""
+    from src.experiments.pipeline import forecast_visits
+
+    daily, catalog = toy_data
+    cutoff = daily["date"].iloc[CUTOFF_ROW]
+    model = _SumOfFeatures(
+        [c for c in feature_columns(build_demand_features(daily, catalog)) if c != TARGET]
+    )
+
+    def visits(demand):
+        return forecast_visits(demand, catalog, model, cutoff, HORIZON_DAYS, units_per_line=1.0)
+
+    base = visits(daily)
+    pd.testing.assert_series_equal(base, visits(_tamper(daily, daily["date"] >= cutoff)))
+    # Not vacuous: the forecast does react to history the planner really had.
+    assert not visits(_tamper(daily, daily["date"] == cutoff - pd.Timedelta(days=1))).equals(base)
+
+
+def test_horizon_state_is_the_cutoff_row_of_the_full_frame(toy_data):
+    """Freezing must hand every horizon day exactly the history state the
+    ordinary feature frame has on the cut-off day -- which also proves the
+    trailing slice it is rebuilt from reaches back far enough."""
+    daily, catalog = toy_data
+    cutoff = daily["date"].iloc[CUTOFF_ROW]
+
+    full = build_demand_features(daily, catalog)
+    horizon = build_horizon_features(daily, catalog, cutoff, HORIZON_DAYS)
+
+    state_columns = [c for c in feature_columns(full) if c.startswith(("lag_", "roll_", "zero_share"))]
+    expected = full[full["date"] == cutoff].set_index("sku_id")[state_columns].sort_index()
+    for day, rows in horizon.groupby("date"):
+        actual = rows.set_index("sku_id")[state_columns].sort_index()
+        np.testing.assert_allclose(actual.to_numpy(), expected.to_numpy(), equal_nan=True)
+
+
+def test_horizon_rows_carry_their_own_calendar(toy_data):
+    daily, catalog = toy_data
+    cutoff = daily["date"].iloc[CUTOFF_ROW]
+
+    full = build_demand_features(daily, catalog)
+    horizon = build_horizon_features(daily, catalog, cutoff, HORIZON_DAYS)
+
+    assert sorted(pd.to_datetime(horizon["date"].unique()).tolist()) == (
+        pd.date_range(cutoff, periods=HORIZON_DAYS, freq="D").tolist()
+    )
+    assert len(horizon) == HORIZON_DAYS * len(catalog)
+    # Calendar and trend line up with the training frame, day by day.
+    calendar = ["day_of_week", "month", "week_of_year", "is_weekend", "days_from_start"]
+    merged = horizon.merge(full, on=["sku_id", "date"], suffixes=("", "_full"))
+    for column in calendar:
+        assert (merged[column] == merged[f"{column}_full"]).all(), column
+    # Every model input is present, so the trained model can score these rows.
+    assert set(feature_columns(full)) - {TARGET} <= set(horizon.columns)
 
 
 def test_walk_forward_folds_never_train_on_the_future():

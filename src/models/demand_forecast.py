@@ -16,9 +16,17 @@ The headline metric is WMAPE rather than MAPE. Daily SKU demand is full of
 zeros, and MAPE is undefined the moment the actual is zero -- reporting it
 would be arithmetically meaningless on exactly the items that are hardest.
 
-Validation is walk-forward: train on everything up to a cut-off, predict the
+Validation is walk-forward: train on everything up to a cut-off, score the
 next `forecast_horizon_days`, roll the cut-off forward, repeat. A random
 train/test split would leak the future into the past and flatter the model.
+
+What the backtest measures is **one-day-ahead** accuracy, averaged over a
+block of `forecast_horizon_days` days -- not a 7-day-ahead forecast. Test rows
+come from the ordinary feature frame, so the row for the fifth test day has a
+``lag_1`` equal to the realised demand of the fourth. That is a fair contest
+(the naive baselines read the same lags), but it is not the multi-week,
+frozen-at-cut-off forecast that slotting consumes (``build_horizon_features``),
+which is necessarily less accurate.
 """
 
 from __future__ import annotations
@@ -142,6 +150,10 @@ def walk_forward_backtest(
     cutoff_date: pd.Timestamp | None = None,
 ) -> pd.DataFrame:
     """Roll a train/test boundary forward through time.
+
+    Each fold scores a block of ``forecast_horizon_days`` consecutive days, but
+    every test row carries lags of realised demand up to the day before it, so
+    the scores are one-day-ahead accuracy (see the module docstring).
 
     ``cutoff_date`` bounds the whole exercise: no fold is allowed to see data
     on or after it. It is set to the first day of the simulation window, so the

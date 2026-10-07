@@ -23,7 +23,7 @@ def main() -> None:
     context = build_context()
 
     print("\n" + "=" * 78)
-    print("ML-1  DEMAND FORECAST  (walk-forward backtest)")
+    print("ML-1  DEMAND FORECAST  (walk-forward backtest, one-day-ahead)")
     print("=" * 78)
     backtest = walk_forward_backtest(context.demand_features, cutoff_date=context.cutoff_date)
     columns = [
